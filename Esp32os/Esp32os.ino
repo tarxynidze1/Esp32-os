@@ -295,6 +295,7 @@ bool i2cReady = false;
 bool adxlConfigured = false;
 bool adxlRetryPending = false;
 uint32_t adxlFailedAt = 0;
+uint32_t adxlSampleAt = 0;
 
 bool readAdxlRegisters(uint8_t address, uint8_t* data, size_t size) {
   Wire.beginTransmission(ADXL345_ADDR);
@@ -323,15 +324,21 @@ bool configureADXL() {
 
 bool readADXL() {
   constexpr uint32_t ADXL_RETRY_MS = 250;
+  constexpr uint32_t ADXL_STALE_MS = 150;
   const uint32_t now = millis();
   if (!i2cReady || (adxlRetryPending && now - adxlFailedAt < ADXL_RETRY_MS)) return false;
 
-  if (!adxlConfigured) adxlConfigured = configureADXL();
+  if (!adxlConfigured) {
+    adxlConfigured = configureADXL();
+    adxlSampleAt = now;
+  }
   uint8_t interruptSource = 0;
   uint8_t data[6];
   const bool statusRead = adxlConfigured && readAdxlRegisters(0x30, &interruptSource, 1);
   if (statusRead && (interruptSource & 0x80) == 0) {
     adxlRetryPending = false;
+    // A sensor reset can leave the device responsive but back in standby.
+    if (now - adxlSampleAt >= ADXL_STALE_MS) adxlConfigured = false;
     return false;
   }
   if (!statusRead || !readAdxlRegisters(0x32, data, sizeof(data))) {
@@ -341,6 +348,7 @@ bool readADXL() {
     return false;
   }
   adxlRetryPending = false;
+  adxlSampleAt = now;
   adxlX = static_cast<int16_t>(data[0] | (data[1] << 8));
   adxlY = static_cast<int16_t>(data[2] | (data[3] << 8));
   adxlZ = static_cast<int16_t>(data[4] | (data[5] << 8));
@@ -607,6 +615,7 @@ int wCt = 0, wSel = 0;
 uint8_t vkR = 0, vkC = 0, wKeyPage = 0, wPasswordLength = 0;
 char wPwd[WifiPasswordLimit + 1] = "";
 bool wShowPassword = false;
+bool wifiScanPending = false;
 bool wifiConnectPending = false;
 bool clockApStarted = false;
 bool ntpConfigured = false;
@@ -1576,7 +1585,7 @@ void drawRacer(int ox) {
   }
   for (int i = 0; i < RacerGame::ObstacleCount; ++i) {
     const auto& car = racer.obstacle(i);
-    if (car.y + RacerGame::CarHeight > RacerGame::RoadTop && car.y <= RacerGame::RoadBottom) {
+    if (car.y + RacerGame::CarHeight > RacerGame::RoadTop && car.y < RacerGame::RoadBottom + 1) {
       drawCarSprite(ox + car.x, static_cast<int>(car.y), true);
     }
   }
@@ -2224,6 +2233,7 @@ void enterWifiApp() {
   tzset();
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(true);
+  WiFi.setScanTimeout(WifiScanTimeoutMs);
   startClockServer();
   wSt = WiFi.status() == WL_CONNECTED ? W_CONNECTED : W_START_SCAN;
 }
@@ -2240,6 +2250,13 @@ void leaveWifiApp() {
 }
 
 void serviceNetwork() {
+  if (wifiScanPending && wSt != W_SCANNING) {
+    const int result = WiFi.scanComplete();
+    if (result != WIFI_SCAN_RUNNING) {
+      if (result >= 0) WiFi.scanDelete();
+      wifiScanPending = false;
+    }
+  }
   const bool connected = WiFi.status() == WL_CONNECTED;
   if (connected && !wifiWasConnected) {
     configTzTime(ClockTimezone, "pool.ntp.org");
@@ -2272,10 +2289,9 @@ void serviceNetwork() {
 
 void loopWifi() {
   if (wSt == W_START_SCAN) {
-    WiFi.scanDelete();
     const int result = WiFi.scanNetworks(true);
-    wifiStateStarted = millis();
-    wSt = result == WIFI_SCAN_FAILED ? W_FAILED : W_SCANNING;
+    wifiScanPending = result != WIFI_SCAN_FAILED;
+    wSt = wifiScanPending ? W_SCANNING : W_FAILED;
   } else if (wSt == W_SCANNING) {
     const int result = WiFi.scanComplete();
     if (result >= 0) {
@@ -2288,10 +2304,12 @@ void loopWifi() {
         if (!listed) ssid.toCharArray(wNet[wCt++].ssid, sizeof(WifiNet::ssid));
       }
       WiFi.scanDelete();
+      wifiScanPending = false;
       wSel = 0;
       wifiSY = targetWifiSY = 0;
       wSt = W_LIST;
-    } else if (result == WIFI_SCAN_FAILED || millis() - wifiStateStarted >= WifiScanTimeoutMs) {
+    } else if (result == WIFI_SCAN_FAILED) {
+      wifiScanPending = false;
       wSt = W_FAILED;
     }
   } else if (wSt == W_LIST) {

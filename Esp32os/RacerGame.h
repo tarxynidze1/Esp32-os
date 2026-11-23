@@ -11,23 +11,21 @@ class RacerGame {
     float y;
   };
 
-  enum {
-    ObstacleCount = 3,
-    RoadLeft = 4,
-    RoadRight = 59,
-    RoadTop = 12,
-    RoadBottom = 127,
-    StripeSpacing = 20,
-    CarWidth = 10,
-    CarHeight = 16,
-    PlayerY = 108,
-    PlayerMinX = RoadLeft + 2,
-    PlayerMaxX = RoadRight - CarWidth - 1,
-    MinimumGap = 60,
-    MaximumGap = 75,
-    MaximumSpeed = 200,
-    SteeringSpeed = 156
-  };
+  static constexpr int ObstacleCount = 3;
+  static constexpr int RoadLeft = 4;
+  static constexpr int RoadRight = 59;
+  static constexpr int RoadTop = 12;
+  static constexpr int RoadBottom = 127;
+  static constexpr int StripeSpacing = 20;
+  static constexpr int CarWidth = 10;
+  static constexpr int CarHeight = 16;
+  static constexpr int PlayerY = 108;
+  static constexpr int PlayerMinX = RoadLeft + 2;
+  static constexpr int PlayerMaxX = RoadRight - CarWidth - 1;
+  static constexpr int MinimumGap = 60;
+  static constexpr int MaximumGap = 75;
+  static constexpr int MaximumSpeed = 200;
+  static constexpr int SteeringSpeed = 156;
 
   template <typename Pick>
   void reset(uint32_t now, Pick pick) {
@@ -73,13 +71,11 @@ class RacerGame {
   const Obstacle& obstacle(int index) const { return obstacles_[index]; }
 
  private:
-  enum {
-    TicksPerSecond = 60,
-    MicrosPerSecond = 1000000,
-    MaxElapsed = 100000,
-    StartingSpeed = 86,
-    SpeedIncrease = 5
-  };
+  static constexpr int TicksPerSecond = 60;
+  static constexpr int MicrosPerSecond = 1000000;
+  static constexpr int MaxElapsed = 100000;
+  static constexpr int StartingSpeed = 86;
+  static constexpr int SpeedIncrease = 5;
 
   Obstacle obstacles_[ObstacleCount] = {};
   float playerX_ = 27;
